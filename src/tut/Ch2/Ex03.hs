@@ -1,9 +1,5 @@
--- Exercise 2:
--- Our strings aren't quite R5RS compliant, because they don't support 
--- escaping of internal quotes within the string. Change parseString so that 
--- \" gives a literal quote character instead of terminating the string. 
--- You may want to replace noneOf "\"" with a new parser action that accepts 
--- either a non-quote character or a backslash followed by a quote mark.
+-- Exercise 3:
+-- Modify the previous exercise to support \n, \r, \t, \\, and any other desired escape characters
 
 module Main where
 import Control.Monad
@@ -32,9 +28,19 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 parseString :: Parser LispVal
 parseString = do
                 char '"'
-                x <- (many ((noneOf "\"") <|> (char '\\' >> char '"')))
+                x <- many $ escapeChar <|> (noneOf "\"")
                 char '"'
                 return $ String x
+                where escapeChar = do
+                                    char '\\'
+                                    x <- oneOf "\\\"nrtb"
+                                    return $ case x of
+                                        '\\' -> '\\'
+                                        '"'  -> '"'
+                                        'n'  -> '\n'
+                                        'r'  -> '\r'
+                                        't'  -> '\t'
+                                        'b'  -> '\b'
 
 
 parseAtom :: Parser LispVal
