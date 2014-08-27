@@ -1,9 +1,10 @@
--- Exercise 3:
--- Modify the previous exercise to support \n, \r, \t, \\, and any other 
--- desired escape characters
+-- Exercise 4:
+
 
 module Main where
 import Control.Monad
+import Data.Char
+import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 
@@ -21,11 +22,6 @@ symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 
 
--- Update: addition of the <|> (char '\\' >> char '"') bit
--- (char '\\' >> char '"') will parse a backslash followed by a double-quote,
--- returning the double-quote.
---
--- >> discards the left-hand parser's result in the Parser monad.
 parseString :: Parser LispVal
 parseString = do
                 char '"'
@@ -63,6 +59,26 @@ parseNumberDo = do
             return numVal
 
 
+parseNumberBase :: Parser LispVal
+parseNumberBase = do
+            radix <- option 'd' radix
+            x <- case radix of 
+                'b' -> many1 (oneOf "01")
+                'o' -> many1 octDigit
+                'd' -> many1 digit
+                'x' -> many1 hexDigit
+            return $ Number $ case radix of
+                'b' -> readBin x
+                'o' -> fst $ (readOct x) !! 0
+                'd' -> read x
+                'x' -> fst $ (readHex x) !! 0
+            where radix = char '#' >> (oneOf "bodx")
+                  -- TODO figure out a nicer way to get an Integer from a
+                  -- String
+                  readBin b = sum [ 2 ^ col * (read [val] :: Integer) 
+                                    | (col, val) <- zip [0..] (reverse b) ]
+
+
 -- explicit sequencing with the >>= operator
 parseNumberBind :: Parser LispVal
 parseNumberBind = (many1 digit) >>= (\x -> return ((Number . read) x))
@@ -73,7 +89,7 @@ parseNumber = liftM (Number . read) $ many1 digit
 
 
 parseExpr :: Parser LispVal
-parseExpr = parseAtom <|> parseString <|> parseNumberBind
+parseExpr = parseAtom <|> parseString <|> parseNumberBase
 
 
 spaces :: Parser ()
