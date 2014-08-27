@@ -1,4 +1,6 @@
 -- Exercise 4:
+-- Change parseNumber to support the Scheme standard for different bases. 
+-- You may find the readOct and readHex functions useful.
 
 
 module Main where
@@ -19,7 +21,18 @@ data LispVal = Atom String
 
 
 symbol :: Parser Char
-symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
+symbol = oneOf "!$%&|*+-/:<=>?@^_~"
+
+
+parseBool :: Parser LispVal
+parseBool = do
+                -- the try combinator allows for backtracking; since numbers
+                -- can have base prefixes starting with #, we use this in 
+                -- order to backtrack on a #d/etc., so it can be properly
+                -- parsed as a number.
+                val <- try (string "#t" <|> string "#f")
+                case val of "#t" -> return $ Bool True
+                            "#f" -> return $ Bool False
 
 
 parseString :: Parser LispVal
@@ -89,7 +102,7 @@ parseNumber = liftM (Number . read) $ many1 digit
 
 
 parseExpr :: Parser LispVal
-parseExpr = parseAtom <|> parseString <|> parseNumberBase
+parseExpr = parseAtom <|> parseBool <|> parseString <|> parseNumberBase
 
 
 spaces :: Parser ()
