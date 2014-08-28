@@ -113,8 +113,8 @@ parseFloating = do
             -- to have one part; i.e. 1. and .1 are both valid floating 
             -- point numbers in the grammar.
             -- readFloat however expects the integer part to ALWAYS be given.
-            float <- (try intOpt) <|> (try fracOpt)
-            return $ (Float (fst $ (readFloat float) !! 0))
+            float <- try intOpt <|> try fracOpt
+            return $ Float $ fst $ (readFloat float) !! 0
             where
                 intOpt :: Parser String
                 intOpt = do
