@@ -28,8 +28,11 @@ showVal (List contents)        = "(" ++ unwordsList contents ++ ")"
 showVal (DottedList head tail) = "(" ++ unwordsList head ++ " . " 
                                  ++ showVal tail ++ ")"
 
+
 unwordsList :: [LispVal] -> String
 unwordsList = unwords . map showVal
+
+
 spaces :: Parser ()
 spaces = skipMany1 space
 
@@ -196,13 +199,58 @@ parseExpr = parseAtom
                 return x
 
 
-readExpr :: String -> String
+readExpr :: String -> LispVal
 readExpr input = case parse parseExpr "lisp" input of
-    Left err  -> "No match: " ++ show err
-    Right val -> "Found value: " ++ show val
+    Left err  -> String $ "No match: " ++ show err
+    Right val -> val
+
+
+eval :: LispVal -> LispVal
+eval val@(String _)             = val
+eval val@(Number _)             = val
+eval val@(Bool _)               = val
+eval (List [Atom "quote", val]) = val
+eval (List (Atom func : args))  = apply func $ map eval args
+
+
+-- Because it took me a little bit to get, here are some notes on how
+-- maybe (the builtin function, not the Maybe type) work.
+--
+-- maybe takes three arguments:
+-- an (a -> b) function,
+-- a Maybe value of the source type (a),
+-- and an "unwrapped" value of the result type (b).
+-- If the Maybe contains an actual value, it applies the function, else it 
+-- returns the default value of the result type.
+apply :: String -> [LispVal] -> LispVal
+apply func args = maybe (Bool False) ($ args) $ lookup func primitives
+
+
+primitives :: [(String, [LispVal] -> LispVal)]
+primitives = [("+", numericBinop (+)),
+              ("-", numericBinop (-)),
+              ("*", numericBinop (*)),
+              ("/", numericBinop div),
+              ("mod", numericBinop mod),
+              ("quotient", numericBinop quot),
+              ("remainder", numericBinop rem)]
+
+
+numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
+numericBinop op params = Number $ foldl1 op $ map unpackNum params
+
+
+-- TODO in "my" interpreter, remove the weak typing here (everything aside
+-- first pattern), replace with sensible error handling.
+unpackNum :: LispVal -> Integer
+unpackNum (Number n) = n
+unpackNum (String n) = let parsed = reads n :: [(Integer, String)] in
+                            if null parsed
+                                then 0
+                                else fst $ parsed !! 0
+unpackNum (List [n]) = unpackNum n
+unpackNum _          = 0
 
 
 main :: IO ()
-main = do
-    args <- getArgs
-    putStrLn (readExpr (args !! 0))
+main = getArgs >>= (print . eval . readExpr . head)
