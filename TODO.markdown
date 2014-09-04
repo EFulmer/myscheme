@@ -6,8 +6,8 @@ TO-DO
     - Exercise 7
     - Add in treating # as a 0 in numeric literal parsing
     - Second part: all exercises
-    - Get parser to fail on excess closing parens.
 - Chapter 3
+    - Exercise 3
 - Chapter 4
 - Chapter 5
 - Chapter 6
