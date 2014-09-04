@@ -226,6 +226,13 @@ eval (List (Atom func : args))  = apply func $ map eval args
 -- and an "unwrapped" value of the result type (b).
 -- If the Maybe contains an actual value, it applies the function, else it 
 -- returns the default value of the result type.
+--
+-- Another cool thing going on here: ($ args) means that the "missing" 
+-- argument will be applied to args; (args $) would mean that args 
+-- is being applied, which is obviously not what we want.
+--
+-- Maybe I'll play around with this later by trying to rearrange the 
+-- arguments here into another form that also works.
 apply :: String -> [LispVal] -> LispVal
 apply func args = maybe (Bool False) ($ args) $ lookup func primitives
 
@@ -274,10 +281,9 @@ isNull (List l) = Bool $ null l
 isNull _        = Bool False
 
 
--- TODO wrong
 isSym :: LispVal -> LispVal
-isSym (List (Atom "quote" : cdr)) = Bool True
-isSym _                           = Bool False
+isSym (Atom _) = Bool True
+isSym _        = Bool False
 
 
 isChar :: LispVal -> LispVal
