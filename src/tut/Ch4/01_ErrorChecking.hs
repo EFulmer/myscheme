@@ -1,14 +1,13 @@
--- Exercise 3
--- Add the symbol-handling functions from R5RS. 
--- A symbol is what we've been calling an Atom in our data constructors
-
 module Main where
 import Control.Monad
+import Control.Monad.Error
 import Data.Char
 import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 
+
+-- Begin data type and typeclass derivation definitions:
 
 data LispVal = Atom String
              | List [LispVal]
@@ -35,6 +34,64 @@ showVal (DottedList head tail) = "(" ++ unwordsList head ++ " . "
 
 unwordsList :: [LispVal] -> String
 unwordsList = unwords . map showVal
+
+
+data LispError = NumArgs Integer [LispVal]
+               | TypeMismatch String LispVal
+               | Parser ParseError
+               | BadSpecialForm String LispVal
+               | NotFunction String String
+               | UnboundVar String String
+               | Default String
+
+
+showError :: LispError -> String
+showError (UnboundVar message varname)  = message ++ ": " ++ varname
+showError (BadSpecialForm message form) = message ++ ": " ++ show form
+showError (NotFunction message func)    = message ++ ": " ++ show func
+showError (NumArgs expected found)      = "Expected " ++ show expected
+                                        ++ " args; found values " 
+                                        ++ unwordsList found
+showError (TypeMismatch expected found) = "Invalid type: expected " ++ expected
+                                        ++ ", found " ++ show found
+showError (Parser parseErr)             = "Parse error at " ++ show parseErr
+
+
+instance Show LispError where show = showError
+
+
+-- Some notes on how Error works:
+-- noMsg is the default error to throw. No message, or a very generic one.
+-- strMsg takes a string and "lifts" it into the particular Error instance,
+-- following whatever behavior that values in that instance of Error 
+-- should use.
+instance Error LispError where 
+    noMsg = Default "An error occurred"
+    strMsg = Default
+
+
+-- We're making a monad out of LispError here. (remember, Either a is a monad;
+-- where a is a concrete type, Either a is a monad parameterized over all 
+-- poss. b)
+-- In other words:
+-- ThrowsError = Either LispError a
+--
+-- MonadError is another typeclass, where the error is handled inside of
+-- some monad. 
+-- It has two functions; throwError lifts an Error value into its monad, 
+-- making it a Left value (since that represents error).
+--
+-- catchError takes an Either value and a function for handling;
+-- it's sort of a reverse of bind; while bind (>>=) typically 
+-- (for List, Either, and Maybe at least) transforms a "success" value 
+-- using the function it's given and leaves a "failure" value alone, 
+-- catchError transforms a failure value and passes a success value 
+-- along unchanged.
+type ThrowsError = Either LispError
+
+
+-- End type definitions
+-- Begin parser definitions
 
 
 spaces :: Parser ()
@@ -203,22 +260,25 @@ parseExpr = parseAtom
                 return x
 
 
-readExpr :: String -> LispVal
+readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
-    Left err  -> String $ "No match: " ++ show err
-    Right val -> val
+    Left err  -> throwError $ Parser err -- lifting it
+    Right val -> return val
 
 
 -- PARSER ENDS HERE --
 -- EVALUATOR BEGINS HERE --
 
 
-eval :: LispVal -> LispVal
-eval val@(String _)             = val
-eval val@(Number _)             = val
-eval val@(Bool _)               = val
-eval (List [Atom "quote", val]) = val
-eval (List (Atom func : args))  = apply func $ map eval args
+-- note: mapM is just map where the higher order func's return type is monadic
+eval :: LispVal -> ThrowsError LispVal
+eval val@(String _)             = return val
+eval val@(Number _)             = return val
+eval val@(Bool _)               = return val
+eval (List [Atom "quote", val]) = return val
+eval (List (Atom func : args))  = mapM eval args >>= apply func
+eval badForm                    = throwError $ BadSpecialForm 
+                                "Unrecognized special form" badForm
 
 
 -- Because it took me a little bit to get, here are some notes on how
@@ -237,11 +297,13 @@ eval (List (Atom func : args))  = apply func $ map eval args
 --
 -- Maybe I'll play around with this later by trying to rearrange the 
 -- arguments here into another form that also works.
-apply :: String -> [LispVal] -> LispVal
-apply func args = maybe (Bool False) ($ args) $ lookup func primitives
+apply :: String -> [LispVal] -> ThrowsError LispVal
+apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func) 
+                        ($ args) 
+                        (lookup func primitives)
 
 
-primitives :: [(String, [LispVal] -> LispVal)]
+primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
               ("-", numericBinop (-)),
               ("*", numericBinop (*)),
@@ -261,10 +323,11 @@ primitives = [("+", numericBinop (+)),
               ("string->symbol", unaryOp strToSym)]
 
 
--- this is hacky and I dislike it
-unaryOp :: (LispVal -> LispVal) -> [LispVal] -> LispVal
-unaryOp f [b] = f b
-unaryOp _ _   = undefined
+-- This isn't hacky!!! 
+unaryOp :: (LispVal -> LispVal) -> [LispVal] -> ThrowsError LispVal
+unaryOp op [b] = return $ op b
+unaryOp _ []   = throwError $ NumArgs 1 []
+unaryOp _ bs   = throwError $ NumArgs 1 bs
 
 
 isBool :: LispVal -> LispVal
@@ -315,15 +378,17 @@ isNum _          = Bool False
 
 
 -- Numeric operations:
-numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
-numericBinop op params = Number $ foldl1 op $ map unpackNum params
+numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
+numericBinop op []            = throwError $ NumArgs 2 []
+numericBinop op singleVal@[_] = throwError $ NumArgs 2 singleVal
+numericBinop op params        = mapM unpackNum params >>= return . Number . foldl1 op
 
 
 -- TODO in "my" interpreter, remove the weak typing here (everything aside
 -- first pattern), replace with sensible error handling.
-unpackNum :: LispVal -> Integer
-unpackNum (Number n) = n
-unpackNum _          = 0
+unpackNum :: LispVal -> ThrowsError Integer
+unpackNum (Number n) = return n
+unpackNum notNum     = throwError $ TypeMismatch "number" notNum
 
 
 -- symbol->string
@@ -338,8 +403,19 @@ strToSym (String v) = Atom v
 strToSym _          = undefined
 
 
+-- End primitive definitions
+-- Begin error handling definitions
+
+
+trapError action = catchError action (return . show)
+
+
+extractValue :: ThrowsError a -> a
+extractValue (Right val) = val
+
+
 main :: IO ()
--- main = getArgs >>= (print . eval . readExpr . head)
 main = do
     args <- getArgs
-    putStrLn (showVal (readExpr (args !! 0)))
+    evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
+    putStrLn $ extractValue $ trapError $ evaled

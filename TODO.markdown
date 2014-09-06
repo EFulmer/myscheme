@@ -6,7 +6,6 @@ TO-DO
     - Exercise 7
     - Add in treating # as a 0 in numeric literal parsing
     - Second part: all exercises
-- Chapter 4
 - Chapter 5
 - Chapter 6
 - Chapter 7
