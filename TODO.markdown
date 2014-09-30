@@ -11,6 +11,7 @@ TO-DO
 - Chapter 5: Evaluation, Part 2
     - Exercise 2
     - Exercise 3
+    - Exercise 4
 - Chapter 6
 - Chapter 7
 - Chapter 8
