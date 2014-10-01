@@ -38,15 +38,16 @@ parseBool = do
 parseChar :: Parser LispVal
 parseChar = do
                 try $ string "\\#"
-                -- either:
-                -- single alphanum followed by delim (space, paren),
-                -- alphanum string followed by delim
-                -- single other symbol
-                val <- alphaNum <|> bracket
+                val <- escapes <|> anyCharStr
                 return $ Character val
-                where bracket = string "(" <|> string ")" <|> string "[" 
-                            <|> string "]" <|> string "{" <|> string "}"
-                      alphaNum = many1 $ letter <|> digit
+                where escapes = let specialChars = ["nul", "alarm", 
+                                        "backspace", "tab", "linefeed", 
+                                        "newline", "vtab", "page", "return", 
+                                        "esc", "space", "delete"]
+                                in try $ foldl1 (<|>) (map string specialChars)
+                      anyCharStr = do 
+                                    x <- noneOf ""
+                                    return [x]
 
 
 parseString :: Parser LispVal
